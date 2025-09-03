@@ -106,7 +106,7 @@ class MEMO_FOSTER(FOSTER):
                 optimizer.step()
                 losses += loss.item()
                 _, preds = torch.max(stud_logits[:targets.shape[0]], dim=1)
-                correct += preds.eq(targets.expand_as(preds)).cpu().sum()
+                correct += preds.eq(targets.expand_as(preds)).sum()
                 total += len(targets)
             scheduler.step()
             train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)

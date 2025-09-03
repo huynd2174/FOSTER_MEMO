@@ -55,7 +55,6 @@ class BaseLearner(object):
             self._construct_exemplar(data_manager, per_class)
 
     def save_checkpoint(self, filename):
-        self._network.cpu()
         save_dict = {
             'tasks': self._cur_task,
             'model_state_dict': self._network.state_dict(),
@@ -104,10 +103,11 @@ class BaseLearner(object):
         correct, total = 0, 0
         for i, (_, inputs, targets) in enumerate(loader):
             inputs = inputs.to(self._device)
+            targets = targets.to(self._device)
             with torch.no_grad():
                 outputs = model(inputs)['eval_logits']
             predicts = torch.max(outputs, dim=1)[1]
-            correct += (predicts.cpu() == targets).sum()
+            correct += (predicts == targets).sum()
             total += len(targets)
 
         return np.around(tensor2numpy(correct)*100 / total, decimals=2)
@@ -117,6 +117,7 @@ class BaseLearner(object):
         y_pred, y_true = [], []
         for _, (_, inputs, targets) in enumerate(loader):
             inputs = inputs.to(self._device)
+            targets = targets.to(self._device)
             with torch.no_grad():
                 outputs = self._network(inputs)['eval_logits']
             predicts = torch.topk(outputs, k=self.topk, dim=1, largest=True, sorted=True)[1]  

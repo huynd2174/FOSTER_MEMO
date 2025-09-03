@@ -151,7 +151,7 @@ class FOSTER(BaseLearner):
                 optimizer.step()
                 losses += loss.item()
                 _, preds = torch.max(logits, dim=1)
-                correct += preds.eq(targets.expand_as(preds)).cpu().sum()
+                correct += preds.eq(targets.expand_as(preds)).sum()
                 total += len(targets)
             scheduler.step()
             train_acc = np.around(tensor2numpy(
@@ -204,7 +204,7 @@ class FOSTER(BaseLearner):
                 losses_kd += (self._known_classes /
                               self._total_classes)*loss_kd.item()
                 _, preds = torch.max(logits, dim=1)
-                correct += preds.eq(targets.expand_as(preds)).cpu().sum()
+                correct += preds.eq(targets.expand_as(preds)).sum()
                 total += len(targets)
             scheduler.step()
             train_acc = np.around(tensor2numpy(
@@ -256,7 +256,7 @@ class FOSTER(BaseLearner):
                 optimizer.step()
                 losses += loss.item()
                 _, preds = torch.max(dark_logits[:targets.shape[0]], dim=1)
-                correct += preds.eq(targets.expand_as(preds)).cpu().sum()
+                correct += preds.eq(targets.expand_as(preds)).sum()
                 total += len(targets)
             scheduler.step()
             train_acc = np.around(tensor2numpy(
