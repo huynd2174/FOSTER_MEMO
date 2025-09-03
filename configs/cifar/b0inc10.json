@@ -9,7 +9,7 @@
     "increment": 10,
     "model_name": "memo-foster",
     "convnet_type": "resnet32",
-    "device": ["0","1"],
+    "device": ["0"],
     "seed": [1993],
     "beta1":[0.98,0.975,0.97,0.965,0.96,0.955,0.95,0.945,0.94],
     "beta2":0.97,
