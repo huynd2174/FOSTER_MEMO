@@ -98,16 +98,30 @@ def _set_device(args):
     if not isinstance(requested, (list, tuple)):
         requested = [requested]
 
-    for d in requested:
-        # Support CPU flags: -1, "cpu", or "none"
-        if d == -1 or str(d).lower() in ("cpu", "none"):
-            devices.append(torch.device('cpu'))
-        else:
-            # Fallback to CPU if CUDA is not available
-            if torch.cuda.is_available():
-                devices.append(torch.device('cuda:{}'.format(int(d))))
-            else:
+    # Build a list of valid CUDA devices if available
+    if torch.cuda.is_available():
+        cuda_count = torch.cuda.device_count()
+        for d in requested:
+            if d == -1 or str(d).lower() in ("cpu", "none"):
                 devices.append(torch.device('cpu'))
+            else:
+                try:
+                    idx = int(d)
+                    if 0 <= idx < cuda_count:
+                        devices.append(torch.device(f'cuda:{idx}'))
+                except Exception:
+                    # Ignore invalid entries
+                    pass
+        # Fallback to a single GPU if none validated
+        if len([dv for dv in devices if dv.type == 'cuda']) == 0:
+            devices = [torch.device('cuda:0')]
+    else:
+        # CUDA not available: honor explicit CPU if provided, otherwise CPU
+        for d in requested:
+            if d == -1 or str(d).lower() in ("cpu", "none"):
+                devices.append(torch.device('cpu'))
+        if not devices:
+            devices = [torch.device('cpu')]
 
     args['device'] = devices
 
