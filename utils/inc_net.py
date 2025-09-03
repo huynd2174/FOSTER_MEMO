@@ -238,7 +238,7 @@ class SimpleCosineIncrementalNet(BaseNet):
         super().__init__(convnet_type, pretrained)
 
     def update_fc(self, nb_classes, nextperiod_initialization):
-        fc = self.generate_fc(self.feature_dim, nb_classes).cuda()
+        fc = self.generate_fc(self.feature_dim, nb_classes)
         if self.fc is not None:
             nb_output = self.fc.out_features
             weight = copy.deepcopy(self.fc.weight.data)
