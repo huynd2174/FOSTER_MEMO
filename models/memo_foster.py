@@ -57,12 +57,13 @@ class MEMO_FOSTER(FOSTER):
         self.test_loader = DataLoader(test_dataset, batch_size=self.args["batch_size"],
                                       shuffle=False, num_workers=self.args["num_workers"]) 
 
-        if len(self._multiple_gpus) > 1:
-            self._network = nn.DataParallel(self._network, self._multiple_gpus)
+        device_ids = [d.index for d in self._multiple_gpus if isinstance(d, torch.device) and d.type == 'cuda' and d.index is not None and d.index < torch.cuda.device_count()]
+        if len(device_ids) > 1:
+            self._network = nn.DataParallel(self._network, device_ids=device_ids)
         self._train(self.train_loader, self.test_loader)
         self.build_rehearsal_memory(data_manager, self.samples_per_class)
         # Unwrap only if actually wrapped
-        if hasattr(self._network, "module"):
+        if isinstance(self._network, nn.DataParallel):
             self._network = self._network.module
 
     def _feature_boosting(self, train_loader, test_loader, optimizer, scheduler):
@@ -73,8 +74,9 @@ class MEMO_FOSTER(FOSTER):
         # Override to add KD alpha/temperature knobs if provided
         self._snet = FOSTERNet(self.args['convnet_type'], False)
         self._snet.update_fc(self._total_classes)
-        if len(self._multiple_gpus) > 1:
-            self._snet = nn.DataParallel(self._snet, self._multiple_gpus)
+        device_ids = [d.index for d in self._multiple_gpus if isinstance(d, torch.device) and d.type == 'cuda' and d.index is not None and d.index < torch.cuda.device_count()]
+        if len(device_ids) > 1:
+            self._snet = nn.DataParallel(self._snet, device_ids=device_ids)
         if hasattr(self._snet, "module"):
             self._snet_module_ptr = self._snet.module
         else:
@@ -122,7 +124,7 @@ class MEMO_FOSTER(FOSTER):
             prog_bar.set_description(info)
             logging.info(info)
 
-        if len(self._multiple_gpus) > 1:
+        if isinstance(self._snet, nn.DataParallel):
             self._snet = self._snet.module
         self._snet.eval()
         # Swap to student
