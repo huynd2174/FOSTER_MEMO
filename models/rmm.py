@@ -8,7 +8,6 @@ from torch.utils.data import DataLoader
 from models.foster import FOSTER
 from utils.toolkit import count_parameters, tensor2numpy, accuracy
 from utils.inc_net import IncrementalNet
-from scipy.spatial.distance import cdist
 from models.base import BaseLearner
 from tqdm import tqdm
 import torch.optim as optim
@@ -64,7 +63,7 @@ class RMMBase(BaseLearner):
                 ret_data=True,
             )
             idx_loader = DataLoader(
-                idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4
+                idx_dataset, batch_size=batch_size, shuffle=False, num_workers=0
             )
             with torch.no_grad():
                 cidx_cls_entropies = []
@@ -97,7 +96,7 @@ class RMMBase(BaseLearner):
                 ret_data=True,
             )
             idx_loader = DataLoader(
-                idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4
+                idx_dataset, batch_size=batch_size, shuffle=False, num_workers=0
             )
             vectors, _ = self._extract_vectors(idx_loader)
             vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
@@ -146,7 +145,7 @@ class RMMBase(BaseLearner):
                 appendent=(selected_exemplars, exemplar_targets),
             )
             idx_loader = DataLoader(
-                idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4
+                idx_dataset, batch_size=batch_size, shuffle=False, num_workers=0
             )
             vectors, _ = self._extract_vectors(idx_loader)
             vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T

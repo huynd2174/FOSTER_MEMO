@@ -144,6 +144,24 @@ class CifarResNet(nn.Module):
     def last_conv(self):
         return self.stage_3[-1].conv_b
 
+    def freeze_until(self, depth_name: str = 'stage_2'):
+        """
+        Freeze shallow layers up to and including the specified depth.
+        depth_name in {'conv_1_3x3', 'bn_1', 'stage_1', 'stage_2'}
+        """
+        ordered = ['conv_1_3x3', 'bn_1', 'stage_1', 'stage_2']
+        if depth_name not in ordered:
+            depth_name = 'stage_2'
+        stop_idx = ordered.index(depth_name)
+        to_freeze = ordered[: stop_idx + 1]
+        for name in to_freeze:
+            mod = getattr(self, name, None)
+            if mod is None:
+                continue
+            for p in mod.parameters():
+                p.requires_grad = False
+        return self
+
 
 def resnet20mnist():
     """Constructs a ResNet-20 model for MNIST."""

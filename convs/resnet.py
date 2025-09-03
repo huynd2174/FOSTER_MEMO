@@ -221,6 +221,24 @@ class ResNet(nn.Module):
         else:
             return self.layer4[-1].conv2
 
+    def freeze_until(self, depth_name: str = 'layer2'):
+        """
+        Freeze shallow layers up to and including the specified depth.
+        depth_name in {'conv1', 'bn1', 'layer1', 'layer2', 'layer3'}
+        """
+        ordered = ['conv1', 'bn1', 'layer1', 'layer2', 'layer3']
+        if depth_name not in ordered:
+            depth_name = 'layer2'
+        stop_idx = ordered.index(depth_name)
+        modules_to_freeze = ordered[: stop_idx + 1]
+        for name in modules_to_freeze:
+            mod = getattr(self, name, None)
+            if mod is None:
+                continue
+            for p in mod.parameters():
+                p.requires_grad = False
+        return self
+
 
 def _resnet(arch, block, layers, pretrained, progress, **kwargs):
     model = ResNet(block, layers, **kwargs)

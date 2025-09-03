@@ -5,7 +5,7 @@ import torch
 from torch import index_select, nn
 from torch.utils.data import DataLoader
 from utils.toolkit import tensor2numpy, accuracy
-from scipy.spatial.distance import cdist
+import numpy.typing as npt
 
 EPSILON = 1e-8
 batch_size = 64
@@ -130,7 +130,14 @@ class BaseLearner(object):
         vectors, y_true = self._extract_vectors(loader)
         vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
         
-        dists = cdist(class_means, vectors, 'sqeuclidean')  
+        # Compute squared Euclidean distance via NumPy to avoid SciPy dependency
+        # class_means: [C, D], vectors: [N, D] -> dists: [C, N]
+        # ||a-b||^2 = ||a||^2 + ||b||^2 - 2 a.b
+        cm = class_means.astype(np.float32)
+        vt = vectors.astype(np.float32)
+        cm_norm = np.sum(cm * cm, axis=1, keepdims=True)        # [C,1]
+        vt_norm = np.sum(vt * vt, axis=1, keepdims=True).T      # [1,N]
+        dists = cm_norm + vt_norm - 2.0 * (cm @ vt.T)           # [C,N]
         scores = dists.T  
 
         return np.argsort(scores, axis=1)[:, :self.topk], y_true  
@@ -157,7 +164,7 @@ class BaseLearner(object):
             for class_idx in range(low, high):
                 data, targets, idx_dataset = data_manager.get_dataset(np.arange(class_idx, class_idx+1), source='train',
                                                                     mode='test', ret_data=True)
-                idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+                idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
                 vectors, _ = self._extract_vectors(idx_loader)
                 vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
                 class_mean = np.mean(vectors, axis=0)
@@ -175,7 +182,7 @@ class BaseLearner(object):
                 
                 
                 _,_,idx_dataset=data_manager.get_dataset([], source='train', appendent=(data,targets) ,mode='test', ret_data=True)
-                idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+                idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
                 vectors, _ = self._extract_vectors(idx_loader)
                 vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
                 class_mean = np.mean(vectors, axis=0)
@@ -207,7 +214,7 @@ class BaseLearner(object):
 
             
             idx_dataset = data_manager.get_dataset([], source='train', mode='test', appendent=(dd, dt))
-            idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+            idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
             vectors, _ = self._extract_vectors(idx_loader)
             vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
             mean = np.mean(vectors, axis=0)
@@ -269,7 +276,7 @@ class BaseLearner(object):
 
             class_dset = data_manager.get_dataset([], source='train', mode='test',
                                                   appendent=(class_data, class_targets))
-            class_loader = DataLoader(class_dset, batch_size=batch_size, shuffle=False, num_workers=4)
+            class_loader = DataLoader(class_dset, batch_size=batch_size, shuffle=False, num_workers=0)
             vectors, _ = self._extract_vectors(class_loader)
             vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
             mean = np.mean(vectors, axis=0)
@@ -281,7 +288,7 @@ class BaseLearner(object):
         for class_idx in range(self._known_classes, self._total_classes):
             data, targets, class_dset = data_manager.get_dataset(np.arange(class_idx, class_idx+1), source='train',
                                                                  mode='test', ret_data=True)
-            class_loader = DataLoader(class_dset, batch_size=batch_size, shuffle=False, num_workers=4)
+            class_loader = DataLoader(class_dset, batch_size=batch_size, shuffle=False, num_workers=0)
 
             vectors, _ = self._extract_vectors(class_loader)
             vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
@@ -311,7 +318,7 @@ class BaseLearner(object):
             
             exemplar_dset = data_manager.get_dataset([], source='train', mode='test',
                                                      appendent=(selected_exemplars, exemplar_targets))
-            exemplar_loader = DataLoader(exemplar_dset, batch_size=batch_size, shuffle=False, num_workers=4)
+            exemplar_loader = DataLoader(exemplar_dset, batch_size=batch_size, shuffle=False, num_workers=0)
             vectors, _ = self._extract_vectors(exemplar_loader)
             vectors = (vectors.T / (np.linalg.norm(vectors.T, axis=0) + EPSILON)).T
             mean = np.mean(vectors, axis=0)

@@ -1,2 +1,63 @@
-data/
+# OS / IDE
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.orig
+*.bak
+.vscode/
+.idea/
+*.code-workspace
+
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.env
+.env*/
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Logs and outputs
+logs/
+**/last_run.log
+*.log
+runs/
+outputs/
+
+# Data and datasets
+data/
+**/cifar-100-python/
+**/cifar-100-python.tar.gz
+**/*.tar
+**/*.tar.gz
+**/*.zip
+**/*.7z
+**/*.rar
+
+# Checkpoints / models
+checkpoints/
+weights/
+**/*.pth
+**/*.pth.tar
+**/*.pt
+**/*.ckpt
+
+# Cache
+.cache/
+**/.cache/
+**/__pycache__/
+**/.mypy_cache/
+**/.pytest_cache/
+
+# Coverage
+coverage/
+htmlcov/
+.tox/

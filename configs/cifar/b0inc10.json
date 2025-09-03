@@ -7,9 +7,9 @@
     "shuffle": true,
     "init_cls": 10,
     "increment": 10,
-    "model_name": "foster",
+    "model_name": "memo-foster",
     "convnet_type": "resnet32",
-    "device": ["0"],
+    "device": [-1],
     "seed": [1993],
     "beta1":[0.98,0.975,0.97,0.965,0.96,0.955,0.95,0.945,0.94],
     "beta2":0.97,
@@ -26,6 +26,9 @@
     "lr" : 0.1,
     "batch_size" : 128,
     "weight_decay" : 5e-4,
-    "num_workers" : 8,
-    "T" : 2
+    "num_workers" : 0,
+    "T" : 2,
+    "memo_freeze_until": "stage_2",
+    "kd_temperature": 2,
+    "kd_alpha": 1.0
 }
