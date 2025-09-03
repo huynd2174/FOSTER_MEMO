@@ -209,9 +209,10 @@ class RMM_FOSTER(RMMBase, FOSTER):
             num_workers=self.args["num_workers"],
         )
 
-        if len(self._multiple_gpus) > 1:
-            self._network = nn.DataParallel(self._network, self._multiple_gpus)
+        device_ids = [d.index for d in self._multiple_gpus if isinstance(d, torch.device) and d.type == 'cuda' and d.index is not None and d.index < torch.cuda.device_count()]
+        if len(device_ids) > 1:
+            self._network = nn.DataParallel(self._network, device_ids=device_ids)
         self._train(self.train_loader, self.test_loader)
         self.build_rehearsal_memory(data_manager, self.samples_per_class)
-        if len(self._multiple_gpus) > 1:
+        if isinstance(self._network, nn.DataParallel):
             self._network = self._network.module

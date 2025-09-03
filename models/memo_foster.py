@@ -29,13 +29,14 @@ class MEMO_FOSTER(FOSTER):
         self._network_module_ptr = self._network
         logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes))
 
-        # Freeze shallow layers on the newest convnet branch (MEMO-style)
-        try:
-            latest = self._network_module_ptr.convnets[-1]
-            if hasattr(latest, 'freeze_until'):
-                latest.freeze_until(self.memo_freeze_until)
-        except Exception as e:
-            logging.info(f"freeze_until skipped: {e}")
+        # Freeze shallow layers on the newest convnet branch (MEMO-style) only for incremental tasks
+        if self._cur_task >= 1:
+            try:
+                latest = self._network_module_ptr.convnets[-1]
+                if hasattr(latest, 'freeze_until'):
+                    latest.freeze_until(self.memo_freeze_until)
+            except Exception as e:
+                logging.info(f"freeze_until skipped: {e}")
 
         if self._cur_task > 0:
             # Also freeze the first branch and old fc as in FOSTER teacher
@@ -60,7 +61,8 @@ class MEMO_FOSTER(FOSTER):
             self._network = nn.DataParallel(self._network, self._multiple_gpus)
         self._train(self.train_loader, self.test_loader)
         self.build_rehearsal_memory(data_manager, self.samples_per_class)
-        if len(self._multiple_gpus) > 1:
+        # Unwrap only if actually wrapped
+        if hasattr(self._network, "module"):
             self._network = self._network.module
 
     def _feature_boosting(self, train_loader, test_loader, optimizer, scheduler):

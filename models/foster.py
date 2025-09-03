@@ -64,11 +64,12 @@ class FOSTER(BaseLearner):
         self.test_loader = DataLoader(
             test_dataset, batch_size=self.args["batch_size"], shuffle=False, num_workers=self.args["num_workers"])
 
-        if len(self._multiple_gpus) > 1:
-            self._network = nn.DataParallel(self._network, self._multiple_gpus)
+        device_ids = [d.index for d in self._multiple_gpus if isinstance(d, torch.device) and d.type == 'cuda' and d.index is not None and d.index < torch.cuda.device_count()]
+        if len(device_ids) > 1:
+            self._network = nn.DataParallel(self._network, device_ids=device_ids)
         self._train(self.train_loader, self.test_loader)
         self.build_rehearsal_memory(data_manager, self.samples_per_class)
-        if len(self._multiple_gpus) > 1:
+        if isinstance(self._network, nn.DataParallel):
             self._network = self._network.module
 
     def train(self):
@@ -222,8 +223,9 @@ class FOSTER(BaseLearner):
     def _feature_compression(self, train_loader, test_loader):
         self._snet = FOSTERNet(self.args['convnet_type'], False)
         self._snet.update_fc(self._total_classes)
-        if len(self._multiple_gpus) > 1:
-            self._snet = nn.DataParallel(self._snet, self._multiple_gpus)
+        device_ids = [d.index for d in self._multiple_gpus if isinstance(d, torch.device) and d.type == 'cuda' and d.index is not None and d.index < torch.cuda.device_count()]
+        if len(device_ids) > 1:
+            self._snet = nn.DataParallel(self._snet, device_ids=device_ids)
         if hasattr(self._snet, "module"):
             self._snet_module_ptr = self._snet.module
         else:
@@ -270,7 +272,7 @@ class FOSTER(BaseLearner):
                     self._cur_task, epoch+1, self.args["compression_epochs"], losses/len(train_loader),  train_acc)
             prog_bar.set_description(info)
             logging.info(info)
-        if len(self._multiple_gpus) > 1:
+        if isinstance(self._snet, nn.DataParallel):
             self._snet = self._snet.module
         if self.is_student_wa:
             self._snet.weight_align(
