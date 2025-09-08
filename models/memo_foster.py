@@ -17,9 +17,15 @@ class MEMO_FOSTER(FOSTER):
         # MEMO+FOSTER: các tham số điều khiển
         # - memo_freeze_until: đóng băng tầng nông (MEMO-style) ở nhánh convnet mới
         # - kd_temperature, kd_alpha: nhiệt độ và trọng số KD cho giai đoạn nén (compression)
+        # - memo_freeze: bật/tắt đóng băng kiểu MEMO; memo_bn_eval: BN eval ở phần đã freeze
+        # - compression_ce_weight: trọng số CE trong compression; compression_lr: LR riêng cho compression
         self.memo_freeze_until = args.get('memo_freeze_until', 'layer2')
         self.kd_temperature = args.get('kd_temperature', args.get('T', 2))
         self.kd_alpha = args.get('kd_alpha', 1.0)
+        self.memo_freeze = args.get('memo_freeze', True)
+        self.memo_bn_eval = args.get('memo_bn_eval', True)
+        self.compression_ce_weight = args.get('compression_ce_weight', 0.2)
+        self.compression_lr = args.get('compression_lr', args.get('lr', 0.1))
 
     def incremental_train(self, data_manager):
         self.data_manager = data_manager
@@ -34,11 +40,16 @@ class MEMO_FOSTER(FOSTER):
         # MEMO: Freeze shallow layers ở nhánh convnet mới (chỉ áp dụng cho incremental tasks)
         #  - CIFAR: 'stage_2' (conv_1_3x3, bn_1, stage_1, stage_2)
         #  - ImageNet: 'layer2' (conv1, bn1, layer1, layer2)
-        if self._cur_task >= 1:
+        if self._cur_task >= 1 and self.memo_freeze:
             try:
                 latest = self._network_module_ptr.convnets[-1]
                 if hasattr(latest, 'freeze_until'):
                     latest.freeze_until(self.memo_freeze_until)
+                if self.memo_bn_eval and hasattr(latest, 'set_bn_eval_until'):
+                    try:
+                        latest.set_bn_eval_until(self.memo_freeze_until)
+                    except Exception as e2:
+                        logging.info(f"set_bn_eval_until skipped: {e2}")
             except Exception as e:
                 logging.info(f"freeze_until skipped: {e}")
 
@@ -71,10 +82,50 @@ class MEMO_FOSTER(FOSTER):
             self._network = self._network.module
 
     def _feature_boosting(self, train_loader, test_loader, optimizer, scheduler):
-        # FOSTER Boosting (CE + KD): dùng triển khai của FOSTER
-        #  - logits = F_current + F_new (FOSTERNet ghép đặc trưng đa nhánh)
-        #  - loss = CE(logits) + CE(fe_logits) + lambda_okd * KD_T(logits[:,:K_old], old_logits)
-        super()._feature_boosting(train_loader, test_loader, optimizer, scheduler)
+        # Boosting như FOSTER nhưng dùng kd_temperature có thể cấu hình
+        prog_bar = tqdm(range(self.args["boosting_epochs"]))
+        for _, epoch in enumerate(prog_bar):
+            self.train()
+            losses = 0.
+            losses_clf = 0.
+            losses_fe = 0.
+            losses_kd = 0.
+            correct, total = 0, 0
+            for i, (_, inputs, targets) in enumerate(train_loader):
+                inputs, targets = inputs.to(self._device, non_blocking=True), targets.to(self._device, non_blocking=True)
+                outputs = self._network(inputs)
+                logits, fe_logits, old_logits = outputs["logits"], outputs["fe_logits"], outputs["old_logits"].detach()
+                loss_clf = F.cross_entropy(logits/self.per_cls_weights, targets)
+                loss_fe = F.cross_entropy(fe_logits, targets)
+                loss_kd = self.lambda_okd * _KD_loss(logits[:, :self._known_classes], old_logits, self.kd_temperature)
+                loss = loss_clf+loss_fe+loss_kd
+                optimizer.zero_grad()
+                loss.backward()
+                if self.oofc == "az":
+                    for i, p in enumerate(self._network_module_ptr.fc.parameters()):
+                        if i == 0:
+                            p.grad.data[self._known_classes:, :self._network_module_ptr.out_dim] = torch.tensor(0.0)
+                elif self.oofc != "ft":
+                    assert 0, "not implemented"
+                optimizer.step()
+                losses += loss.item()
+                losses_fe += loss_fe.item()
+                losses_clf += loss_clf.item()
+                losses_kd += (self._known_classes / self._total_classes)*loss_kd.item()
+                _, preds = torch.max(logits, dim=1)
+                correct += preds.eq(targets.expand_as(preds)).sum()
+                total += len(targets)
+            scheduler.step()
+            train_acc = np.around(tensor2numpy(correct)*100 / total, decimals=2)
+            if epoch % 5 != 0:
+                test_acc = self._compute_accuracy(self._network, test_loader)
+                info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Loss_clf {:.3f}, Loss_fe {:.3f}, Loss_kd {:.3f}, Train_accy {:.2f}, Test_accy {:.2f}'.format(
+                    self._cur_task, epoch+1, self.args["boosting_epochs"], losses/len(train_loader), losses_clf/len(train_loader), losses_fe/len(train_loader), losses_kd/len(train_loader), train_acc, test_acc)
+            else:
+                info = 'Task {}, Epoch {}/{} => Loss {:.3f}, Loss_clf {:.3f}, Loss_fe {:.3f}, Loss_kd {:.3f}, Train_accy {:.2f}'.format(
+                    self._cur_task, epoch+1, self.args["boosting_epochs"], losses/len(train_loader), losses_clf/len(train_loader), losses_fe/len(train_loader), losses_kd/len(train_loader), train_acc)
+            prog_bar.set_description(info)
+            logging.info(info)
 
     def _feature_compression(self, train_loader, test_loader):
         # FOSTER Compression (KD + CE): nén teacher -> student
@@ -95,7 +146,7 @@ class MEMO_FOSTER(FOSTER):
         self._snet_module_ptr.copy_fc(self._network_module_ptr.oldfc)
 
         optimizer = optim.SGD(filter(lambda p: p.requires_grad, self._snet.parameters()),
-                              lr=self.args["lr"], momentum=0.9)
+                              lr=self.compression_lr, momentum=0.9)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=self.args["compression_epochs"]) 
 
         self._network.eval()
@@ -110,10 +161,10 @@ class MEMO_FOSTER(FOSTER):
                 with torch.no_grad():
                     teach_out = self._network(inputs)
                     teach_logits = teach_out["logits"]
-                # KD + optional CE
-                loss_kd = _KD_loss(stud_logits, teach_logits, self.kd_temperature)
+                # KD (Balanced KD) + optional CE có trọng số
+                loss_kd = self.BKD(stud_logits, teach_logits, self.kd_temperature)
                 loss_ce = F.cross_entropy(stud_logits, targets)
-                loss = self.kd_alpha * loss_kd + loss_ce
+                loss = self.kd_alpha * loss_kd + self.compression_ce_weight * loss_ce
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -135,6 +186,11 @@ class MEMO_FOSTER(FOSTER):
 
         if isinstance(self._snet, nn.DataParallel):
             self._snet = self._snet.module
+        # Căn chỉnh trọng số student để giảm bias lớp cũ/mới
+        if self.is_student_wa:
+            self._snet.weight_align(self._known_classes, self._total_classes - self._known_classes, self.wa_value)
+        else:
+            logging.info("do not weight align student!")
         self._snet.eval()
         # Swap to student
         self._snet_module_ptr = self._snet
