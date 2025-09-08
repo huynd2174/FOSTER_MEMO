@@ -162,6 +162,27 @@ class CifarResNet(nn.Module):
                 p.requires_grad = False
         return self
 
+    def set_bn_eval_until(self, depth_name: str = 'stage_2'):
+        """
+        Set BatchNorm layers to eval (freeze running stats/affine) up to depth_name.
+        depth_name in {'conv_1_3x3', 'bn_1', 'stage_1', 'stage_2'}
+        """
+        ordered = ['conv_1_3x3', 'bn_1', 'stage_1', 'stage_2']
+        if depth_name not in ordered:
+            depth_name = 'stage_2'
+        stop_idx = ordered.index(depth_name)
+        to_set = ordered[: stop_idx + 1]
+        for name in to_set:
+            mod = getattr(self, name, None)
+            if mod is None:
+                continue
+            for m in mod.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.eval()
+                    for p in m.parameters():
+                        p.requires_grad = False
+        return self
+
 
 def resnet20mnist():
     """Constructs a ResNet-20 model for MNIST."""

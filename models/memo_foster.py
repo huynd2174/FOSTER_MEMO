@@ -12,6 +12,15 @@ from utils.toolkit import count_parameters, tensor2numpy
 
 
 class MEMO_FOSTER(FOSTER):
+    """
+    Kết hợp MEMO + FOSTER trong một learner duy nhất:
+    - MEMO: mở rộng sâu theo nhánh (trên FOSTERNet) và đóng băng tầng nông sau base
+      để giữ đặc trưng tổng quát; dùng exemplar rehearsal từ BaseLearner.
+    - FOSTER: huấn luyện 2 pha cho mỗi task t>=1
+        (1) Boosting: CE-bal(logits_total) + CE(fe_logits) + KD(oldfc→logits_total[:K_old])
+        (2) Compression: chưng cất teacher→student bằng BKD (+ CE có trọng số),
+            sau đó thay teacher bằng student để kiểm soát kích thước/ổn định.
+    """
     def __init__(self, args):
         super().__init__(args)
         # MEMO+FOSTER: các tham số điều khiển
@@ -63,6 +72,7 @@ class MEMO_FOSTER(FOSTER):
         logging.info('All params: {}'.format(count_parameters(self._network)))
         logging.info('Trainable params: {}'.format(count_parameters(self._network, True)))
 
+        # Trộn dữ liệu task hiện tại với exemplar (rehearsal) để giảm quên
         train_dataset = data_manager.get_dataset(
             np.arange(self._known_classes, self._total_classes), source='train',
             mode='train', appendent=self._get_memory())
@@ -82,7 +92,10 @@ class MEMO_FOSTER(FOSTER):
             self._network = self._network.module
 
     def _feature_boosting(self, train_loader, test_loader, optimizer, scheduler):
-        # Boosting như FOSTER nhưng dùng kd_temperature có thể cấu hình
+        # FOSTER Boosting (áp dụng cho t>=1):
+        #  - CE(logits_total/self.per_cls_weights, y): CE cân bằng theo tần suất lớp
+        #  - CE(fe_logits, y): CE thường, buộc nhánh mới học đặc trưng lớp mới
+        #  - KD(old_logits → logits_total[:K_old]; T=kd_temperature): giữ tri thức lớp cũ
         prog_bar = tqdm(range(self.args["boosting_epochs"]))
         for _, epoch in enumerate(prog_bar):
             self.train()
@@ -128,10 +141,10 @@ class MEMO_FOSTER(FOSTER):
             logging.info(info)
 
     def _feature_compression(self, train_loader, test_loader):
-        # FOSTER Compression (KD + CE): nén teacher -> student
-        #  - KD với kd_temperature để học "soft targets" từ teacher
-        #  - CE với labels thật để neo student, cải thiện ổn định
-        #  - loss = kd_alpha * KD + CE
+        # FOSTER Compression (teacher -> student):
+        #  - KD = BKD(stud_logits, teach_logits; T=kd_temperature) để cân bằng lớp theo FOSTER
+        #  - + compression_ce_weight * CE(stud_logits, y) để neo student (tùy chọn, nhỏ)
+        #  - Dùng compression_lr < lr boosting để nén ổn định; cuối pha, thay teacher bằng student
         self._snet = FOSTERNet(self.args['convnet_type'], False)
         self._snet.update_fc(self._total_classes)
         device_ids = [d.index for d in self._multiple_gpus if isinstance(d, torch.device) and d.type == 'cuda' and d.index is not None and d.index < torch.cuda.device_count()]
