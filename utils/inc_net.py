@@ -278,6 +278,12 @@ class FOSTERNet(nn.Module):
         return features
 
     def forward(self, x):
+        # FOSTERNet: kết nối song song + concat đặc trưng đa nhánh
+        #  - Mỗi tác vụ thêm một nhánh convnet mới (deep module)
+        #  - Ghép đặc trưng tất cả nhánh (concat) để tạo logits tổng hợp (F_current + F_new)
+        #  - Head tách biệt:
+        #     + fe_fc cho nhánh mới (fe_logits)
+        #     + oldfc cho phần đặc trưng cũ (old_logits)
         features = [convnet(x)['features'] for convnet in self.convnets]
         features = torch.cat(features, 1)
         out = self.fc(features)

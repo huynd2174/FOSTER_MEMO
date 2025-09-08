@@ -168,6 +168,11 @@ class FOSTER(BaseLearner):
             logging.info(info)
 
     def _feature_boosting(self, train_loader, test_loader, optimizer, scheduler):
+        # Boosting theo FOSTER: CE + KD để học phần dư ổn định
+        #  - logits: đầu ra tổng hợp (F_current + F_new)
+        #  - fe_logits: head nhánh mới (F_new)
+        #  - old_logits: head cũ (giữ tri thức lớp cũ)
+        #  - loss = CE(logits/weights, y) + CE(fe_logits, y) + lambda_okd * KD_T(logits[:,:K_old], old_logits)
         prog_bar = tqdm(range(self.args["boosting_epochs"]))
         for _, epoch in enumerate(prog_bar):
             self.train()

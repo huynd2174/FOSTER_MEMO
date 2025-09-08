@@ -14,7 +14,9 @@ from utils.toolkit import count_parameters, tensor2numpy
 class MEMO_FOSTER(FOSTER):
     def __init__(self, args):
         super().__init__(args)
-        # Extra knobs for MEMO freezing and compression KD
+        # MEMO+FOSTER: các tham số điều khiển
+        # - memo_freeze_until: đóng băng tầng nông (MEMO-style) ở nhánh convnet mới
+        # - kd_temperature, kd_alpha: nhiệt độ và trọng số KD cho giai đoạn nén (compression)
         self.memo_freeze_until = args.get('memo_freeze_until', 'layer2')
         self.kd_temperature = args.get('kd_temperature', args.get('T', 2))
         self.kd_alpha = args.get('kd_alpha', 1.0)
@@ -29,7 +31,9 @@ class MEMO_FOSTER(FOSTER):
         self._network_module_ptr = self._network
         logging.info('Learning on {}-{}'.format(self._known_classes, self._total_classes))
 
-        # Freeze shallow layers on the newest convnet branch (MEMO-style) only for incremental tasks
+        # MEMO: Freeze shallow layers ở nhánh convnet mới (chỉ áp dụng cho incremental tasks)
+        #  - CIFAR: 'stage_2' (conv_1_3x3, bn_1, stage_1, stage_2)
+        #  - ImageNet: 'layer2' (conv1, bn1, layer1, layer2)
         if self._cur_task >= 1:
             try:
                 latest = self._network_module_ptr.convnets[-1]
@@ -39,7 +43,7 @@ class MEMO_FOSTER(FOSTER):
                 logging.info(f"freeze_until skipped: {e}")
 
         if self._cur_task > 0:
-            # Also freeze the first branch and old fc as in FOSTER teacher
+            # Khóa nhánh nền đầu tiên và oldfc (vai trò teacher trong FOSTER)
             for p in self._network.convnets[0].parameters():
                 p.requires_grad = False
             for p in self._network.oldfc.parameters():
@@ -67,11 +71,16 @@ class MEMO_FOSTER(FOSTER):
             self._network = self._network.module
 
     def _feature_boosting(self, train_loader, test_loader, optimizer, scheduler):
-        # Same as FOSTER, but conceptually treat logits = F_current + F_new (already done in FOSTERNet)
+        # FOSTER Boosting (CE + KD): dùng triển khai của FOSTER
+        #  - logits = F_current + F_new (FOSTERNet ghép đặc trưng đa nhánh)
+        #  - loss = CE(logits) + CE(fe_logits) + lambda_okd * KD_T(logits[:,:K_old], old_logits)
         super()._feature_boosting(train_loader, test_loader, optimizer, scheduler)
 
     def _feature_compression(self, train_loader, test_loader):
-        # Override to add KD alpha/temperature knobs if provided
+        # FOSTER Compression (KD + CE): nén teacher -> student
+        #  - KD với kd_temperature để học "soft targets" từ teacher
+        #  - CE với labels thật để neo student, cải thiện ổn định
+        #  - loss = kd_alpha * KD + CE
         self._snet = FOSTERNet(self.args['convnet_type'], False)
         self._snet.update_fc(self._total_classes)
         device_ids = [d.index for d in self._multiple_gpus if isinstance(d, torch.device) and d.type == 'cuda' and d.index is not None and d.index < torch.cuda.device_count()]
