@@ -278,12 +278,13 @@ class FOSTERNet(nn.Module):
         return features
 
     def forward(self, x):
-        # FOSTERNet: kết nối song song + concat đặc trưng đa nhánh
-        #  - Mỗi tác vụ thêm một nhánh convnet mới (deep module)
-        #  - Ghép đặc trưng tất cả nhánh (concat) để tạo logits tổng hợp (F_current + F_new)
+        # FOSTERNet (đa nhánh) cho MEMO+FOSTER:
+        #  - Mỗi task incremental thêm một nhánh convnet mới (mở rộng sâu - MEMO).
+        #  - Đặc trưng tất cả nhánh được nối ghép (concat) rồi đi vào head chính (fc)
+        #    để tạo ra logits tổng hợp (tương ứng với F_current + F_new ở mức đặc trưng).
         #  - Head tách biệt:
-        #     + fe_fc cho nhánh mới (fe_logits)
-        #     + oldfc cho phần đặc trưng cũ (old_logits)
+        #     + fe_fc: head trên đặc trưng của nhánh mới nhất (fe_logits) phục vụ boosting.
+        #     + oldfc: head trên đặc trưng cũ (old_logits) làm teacher cho KD ở boosting.
         features = [convnet(x)['features'] for convnet in self.convnets]
         features = torch.cat(features, 1)
         out = self.fc(features)
