@@ -16,10 +16,10 @@ EPSILON = 1e-8
 
 class FOSTER(BaseLearner):
     def __init__(self, args):
-        super().__init__(args)
+        super().__init__(args)#BaseLearner
         self.args = args
-        self._network = FOSTERNet(args['convnet_type'], False)
-        self._snet = None
+        self._network = FOSTERNet(args['convnet_type'], False)#FOSTERNet
+        self._snet = None#FOSTERNet
         self.beta1 = args["beta1"]
         self.beta2 = args["beta2"]
         self.per_cls_weights = None
@@ -37,7 +37,7 @@ class FOSTER(BaseLearner):
         self.data_manager = data_manager
         self._cur_task += 1
         if self._cur_task > 1:
-            self._network = self._snet
+            self._network = self._snet#FOSTERNet
         self._total_classes = self._known_classes + \
             data_manager.get_task_size(self._cur_task)
         self._network.update_fc(self._total_classes)
@@ -58,11 +58,15 @@ class FOSTER(BaseLearner):
         train_dataset = data_manager.get_dataset(np.arange(self._known_classes, self._total_classes), source='train',
                                                  mode='train', appendent=self._get_memory())
         self.train_loader = DataLoader(
-            train_dataset, batch_size=self.args["batch_size"], shuffle=True, num_workers=self.args["num_workers"], pin_memory=True)
+            train_dataset, batch_size=self.args["batch_size"], shuffle=True, 
+            num_workers=self.args["num_workers"], pin_memory=True,
+            persistent_workers=True if self.args["num_workers"] > 0 else False)
         test_dataset = data_manager.get_dataset(
             np.arange(0, self._total_classes), source='test', mode='test')
         self.test_loader = DataLoader(
-            test_dataset, batch_size=self.args["batch_size"], shuffle=False, num_workers=self.args["num_workers"])
+            test_dataset, batch_size=self.args["batch_size"], shuffle=False, 
+            num_workers=self.args["num_workers"],
+            persistent_workers=True if self.args["num_workers"] > 0 else False)
 
         device_ids = [d.index for d in self._multiple_gpus if isinstance(d, torch.device) and d.type == 'cuda' and d.index is not None and d.index < torch.cuda.device_count()]
         if len(device_ids) > 1:

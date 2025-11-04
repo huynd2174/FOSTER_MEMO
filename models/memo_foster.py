@@ -77,10 +77,12 @@ class MEMO_FOSTER(FOSTER):
             np.arange(self._known_classes, self._total_classes), source='train',
             mode='train', appendent=self._get_memory())
         self.train_loader = DataLoader(train_dataset, batch_size=self.args["batch_size"],
-                                       shuffle=True, num_workers=self.args["num_workers"], pin_memory=True)
+                                       shuffle=True, num_workers=self.args["num_workers"], pin_memory=True,
+                                       persistent_workers=True if self.args["num_workers"] > 0 else False)
         test_dataset = data_manager.get_dataset(np.arange(0, self._total_classes), source='test', mode='test')
         self.test_loader = DataLoader(test_dataset, batch_size=self.args["batch_size"],
-                                      shuffle=False, num_workers=self.args["num_workers"]) 
+                                      shuffle=False, num_workers=self.args["num_workers"],
+                                      persistent_workers=True if self.args["num_workers"] > 0 else False) 
 
         device_ids = [d.index for d in self._multiple_gpus if isinstance(d, torch.device) and d.type == 'cuda' and d.index is not None and d.index < torch.cuda.device_count()]
         if len(device_ids) > 1:
@@ -90,6 +92,7 @@ class MEMO_FOSTER(FOSTER):
         # Unwrap only if actually wrapped
         if isinstance(self._network, nn.DataParallel):
             self._network = self._network.module
+
 
     def _feature_boosting(self, train_loader, test_loader, optimizer, scheduler):
         # FOSTER Boosting (áp dụng cho t>=1):

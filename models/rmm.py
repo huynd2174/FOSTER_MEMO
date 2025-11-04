@@ -198,6 +198,7 @@ class RMM_FOSTER(RMMBase, FOSTER):
             shuffle=True,
             num_workers=self.args["num_workers"],
             pin_memory=True,
+            persistent_workers=True if self.args["num_workers"] > 0 else False,
         )
         test_dataset = data_manager.get_dataset(
             np.arange(0, self._total_classes), source="test", mode="test"
@@ -207,6 +208,7 @@ class RMM_FOSTER(RMMBase, FOSTER):
             batch_size=self.args["batch_size"],
             shuffle=False,
             num_workers=self.args["num_workers"],
+            persistent_workers=True if self.args["num_workers"] > 0 else False,
         )
 
         device_ids = [d.index for d in self._multiple_gpus if isinstance(d, torch.device) and d.type == 'cuda' and d.index is not None and d.index < torch.cuda.device_count()]
